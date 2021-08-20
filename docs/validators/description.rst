@@ -23,6 +23,47 @@ Description
       ends_with:
          match: 'Any last sentence' # array of strings
          message: 'Come message...' # optional
+      jira:
+        regex: '[A-Z][A-Z0-9]+-\d+'
+        regex_flag: none
+        message: 'The Jira ticket does not exist'
+
+you can use ``and`` and ``or`` options to create more complex validations
+
+::
+
+    - do: description
+      and:
+        - must_include:
+            regex: '### Goals'
+            message: 'Custom message...'
+        - must_include:
+            regex: '### Changes'
+            message: 'Custom message...'
+      or:
+        - must_include:
+            regex: '### Bug Description'
+            message: 'Custom message...'
+        - must_include:
+            regex: '### Feature Description'
+            message: 'Custom message...'
+
+you can also nest ``and`` and ``or`` options
+
+::
+
+    - do: description
+      and:
+        - or:
+          - must_include:
+              regex: '### Bug Description'
+              message: 'Custom message...'
+          - must_include:
+              regex: '### Feature Description'
+              message: 'Custom message...'
+        - must_include:
+            regex: '### Changes'
+            message: 'Custom message...'
 
 Supported Events:
 ::

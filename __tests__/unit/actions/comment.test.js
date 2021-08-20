@@ -3,11 +3,11 @@ const Helper = require('../../../__fixtures__/unit/helper')
 
 const settings = {
   payload: {
-    body: `Your run has returned the following status: {{status}}`
+    body: 'Your run has returned the following status: {{status}}'
   }
 }
 
-let result = {
+const result = {
   status: 'pass',
   validations: [{
     status: 'pass',
@@ -19,7 +19,7 @@ test('check that comment created when afterValidate is called with proper parame
   const comment = new Comment()
   const context = createMockContext()
 
-  let result = {
+  const result = {
     status: 'pass',
     validations: [{
       status: 'pass',
@@ -28,22 +28,23 @@ test('check that comment created when afterValidate is called with proper parame
   }
 
   await comment.afterValidate(context, settings, '', result)
-  expect(context.github.issues.createComment.mock.calls.length).toBe(1)
-  expect(context.github.issues.createComment.mock.calls[0][0].body).toBe(`Your run has returned the following status: pass`)
+  expect(context.octokit.issues.createComment.mock.calls.length).toBe(1)
+  expect(context.octokit.issues.createComment.mock.calls[0][0].body).toBe('Your run has returned the following status: pass')
 })
 
 test('that comment is created three times when result contain three issues found to be acted on', async () => {
   const comment = new Comment()
   const context = createMockContext([], 'repository')
-  let schedulerResult = {...result}
+  context.eventName = 'schedule'
+  const schedulerResult = { ...result }
   schedulerResult.validationSuites = [{
     schedule: {
-      issues: [{number: 1, user: {login: 'scheduler'}}, {number: 2, user: {login: 'scheduler'}}, {number: 3, user: {login: 'scheduler'}}],
+      issues: [{ number: 1, user: { login: 'scheduler' } }, { number: 2, user: { login: 'scheduler' } }, { number: 3, user: { login: 'scheduler' } }],
       pulls: []
     }
   }]
   await comment.afterValidate(context, settings, '', schedulerResult)
-  expect(context.github.issues.createComment.mock.calls.length).toBe(3)
+  expect(context.octokit.issues.createComment.mock.calls.length).toBe(3)
 })
 
 test('check that old comments from Mergeable are deleted if they exists', async () => {
@@ -63,7 +64,7 @@ test('check that old comments from Mergeable are deleted if they exists', async 
   }]
   const context = createMockContext(listComments)
 
-  let result = {
+  const result = {
     status: 'pass',
     validations: [{
       status: 'pass',
@@ -72,8 +73,8 @@ test('check that old comments from Mergeable are deleted if they exists', async 
   }
 
   await comment.afterValidate(context, settings, '', result)
-  expect(context.github.issues.deleteComment.mock.calls.length).toBe(1)
-  expect(context.github.issues.deleteComment.mock.calls[0][0].comment_id).toBe(`2`)
+  expect(context.octokit.issues.deleteComment.mock.calls.length).toBe(1)
+  expect(context.octokit.issues.deleteComment.mock.calls[0][0].comment_id).toBe('2')
 })
 
 test('check that old comments checks toLowerCase of the Bot name', async () => {
@@ -93,7 +94,7 @@ test('check that old comments checks toLowerCase of the Bot name', async () => {
   }]
   const context = createMockContext(listComments)
 
-  let result = {
+  const result = {
     status: 'pass',
     validations: [{
       status: 'pass',
@@ -102,8 +103,8 @@ test('check that old comments checks toLowerCase of the Bot name', async () => {
   }
 
   await comment.afterValidate(context, settings, '', result)
-  expect(context.github.issues.deleteComment.mock.calls.length).toBe(1)
-  expect(context.github.issues.deleteComment.mock.calls[0][0].comment_id).toBe(`2`)
+  expect(context.octokit.issues.deleteComment.mock.calls.length).toBe(1)
+  expect(context.octokit.issues.deleteComment.mock.calls[0][0].comment_id).toBe('2')
 })
 
 test('error handling includes removing old error comments and creating new error comment', async () => {
@@ -135,9 +136,9 @@ test('error handling includes removing old error comments and creating new error
   }
 
   await comment.handleError(context, payload)
-  expect(context.github.issues.deleteComment.mock.calls.length).toBe(1)
-  expect(context.github.issues.deleteComment.mock.calls[0][0].comment_id).toBe(`3`)
-  expect(context.github.issues.createComment.mock.calls[0][0].body).toBe(payload.body)
+  expect(context.octokit.issues.deleteComment.mock.calls.length).toBe(1)
+  expect(context.octokit.issues.deleteComment.mock.calls[0][0].comment_id).toBe('3')
+  expect(context.octokit.issues.createComment.mock.calls[0][0].body).toBe(payload.body)
 })
 
 test('remove error comments only remove comments that includes "error" ', async () => {
@@ -165,9 +166,9 @@ test('remove error comments only remove comments that includes "error" ', async 
   }]
   const context = createMockContext(listComments)
 
-  await comment.removeErrorComments(context)
-  expect(context.github.issues.deleteComment.mock.calls.length).toBe(1)
-  expect(context.github.issues.deleteComment.mock.calls[0][0].comment_id).toBe(`3`)
+  await comment.removeErrorComments(context, comment)
+  expect(context.octokit.issues.deleteComment.mock.calls.length).toBe(1)
+  expect(context.octokit.issues.deleteComment.mock.calls[0][0].comment_id).toBe('3')
 })
 
 test('check that leave_old_comment option works', async () => {
@@ -175,7 +176,7 @@ test('check that leave_old_comment option works', async () => {
 
   const settings = {
     payload: {
-      body: `Your run has returned the following status: {{status}}`
+      body: 'Your run has returned the following status: {{status}}'
     },
     leave_old_comment: true
   }
@@ -194,7 +195,7 @@ test('check that leave_old_comment option works', async () => {
   }]
   const context = createMockContext(listComments)
 
-  let result = {
+  const result = {
     status: 'pass',
     validations: [{
       status: 'pass',
@@ -203,7 +204,7 @@ test('check that leave_old_comment option works', async () => {
   }
 
   await comment.afterValidate(context, settings, '', result)
-  expect(context.github.issues.deleteComment.mock.calls.length).toBe(0)
+  expect(context.octokit.issues.deleteComment.mock.calls.length).toBe(0)
 })
 
 test('remove Error comment fail gracefully if payload does not exists', async () => {
@@ -211,7 +212,7 @@ test('remove Error comment fail gracefully if payload does not exists', async ()
 
   const context = {
     payload: {},
-    github: {
+    octokit: {
       issues: {
         deleteComment: jest.fn()
       }
@@ -219,7 +220,7 @@ test('remove Error comment fail gracefully if payload does not exists', async ()
   }
 
   await comment.removeErrorComments(context)
-  expect(context.github.issues.deleteComment.mock.calls.length).toBe(0)
+  expect(context.octokit.issues.deleteComment.mock.calls.length).toBe(0)
 })
 
 test('error handling includes removing old error comments and creating new error comment', async () => {
@@ -232,13 +233,13 @@ test('error handling includes removing old error comments and creating new error
   }
 
   await comment.afterValidate(context, settings, '', result)
-  expect(context.github.issues.createComment.mock.calls[0][0].body).toBe('creator , do something!')
+  expect(context.octokit.issues.createComment.mock.calls[0][0].body).toBe('creator , do something!')
 })
 
 const createMockContext = (listComments, event = undefined) => {
-  let context = Helper.mockContext({listComments, event})
+  const context = Helper.mockContext({ listComments, event })
 
-  context.github.issues.createComment = jest.fn()
-  context.github.issues.deleteComment = jest.fn()
+  context.octokit.issues.createComment = jest.fn()
+  context.octokit.issues.deleteComment = jest.fn()
   return context
 }

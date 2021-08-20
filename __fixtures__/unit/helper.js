@@ -1,8 +1,9 @@
 const _ = require('lodash')
 const yaml = require('js-yaml')
+const moment = require('moment-timezone')
 
 const throwNotFound = () => {
-  let error = new Error('404 error')
+  const error = new Error('404 error')
   error.status = 404
   throw error
 }
@@ -11,22 +12,41 @@ module.exports = {
   mockContext: (options = {}) => {
     return {
       repo: (properties) => { return Object.assign({ owner: 'owner', repo: 'repo' }, properties) },
-      event: (options.event) ? options.event : 'pull_request',
+      eventName: (options.eventName) ? options.eventName : 'pull_request',
       payload: {
+        sha: 'sha1',
         action: 'opened',
         repository: {
-          full_name: 'name'
+          name: (options.repoName) ? options.repoName : 'repoName',
+          full_name: 'name',
+          owner: {
+            login: 'owner'
+          }
+        },
+        check_suite: {
+          pull_requests: [
+            {
+              number: 1
+            }
+          ]
         },
         pull_request: {
           user: {
-            login: 'creator'
+            login: options.author ? options.author : 'creator'
           },
           title: (options.title) ? options.title : 'title',
           body: options.body,
           number: (options.number) ? options.number : 1,
+          created_at: options.createdAt ? moment(options.createdAt) : moment(),
+          updated_at: options.updatedAt ? moment(options.updatedAt) : moment(),
           milestone: (options.milestone) ? options.milestone : null,
           requested_reviewers: options.requestedReviewers ? options.requestedReviewers : [],
+          requested_teams: options.requestedTeams ? options.requestedTeams : [],
           base: {
+            repo: {
+              full_name: options.baseRepo ? options.baseRepo : 'owner/test',
+              private: (options.repoPrivate) ? options.repoPrivate : false
+            },
             ref: 'baseRef',
             sha: 'sha2'
           },
@@ -34,8 +54,10 @@ module.exports = {
             ref: 'test',
             sha: 'sha1',
             repo: {
+              full_name: options.headRepo ? options.headRepo : 'owner/test',
               issues_url: 'testRepo/issues{/number}'
-            }},
+            }
+          },
           assignees: (options.assignees) ? options.assignees : []
         },
         issue: {
@@ -54,45 +76,63 @@ module.exports = {
           }
         }
       },
-      github: {
+      octokit: {
         repos: {
           createStatus: () => {},
           listCollaborators: () => {
             return { data: (options.collaborators) ? options.collaborators : [] }
           },
-          getContents: ({ path }) => {
+          getContent: ({ path }) => {
             return new Promise((resolve, reject) => {
               if (path === '.github/mergeable.yml') {
                 throwNotFound()
               }
 
               if (path === '.github/CODEOWNERS') {
-                return options.codeowners ? resolve({ data: {
-                  content: options.codeowners
-                }}) : throwNotFound()
+                return options.codeowners
+                  ? resolve({
+                      data: {
+                        content: options.codeowners
+                      }
+                    })
+                  : throwNotFound()
               }
             })
           },
           compareCommits: () => {
             return new Promise(resolve => {
-              resolve({ data: {
-                files: options.compareCommits
-              }})
+              resolve({
+                data: {
+                  files: options.compareCommits
+                }
+              })
+            })
+          },
+          getAllTopics: () => {
+            return new Promise(resolve => {
+              resolve({
+                data: {
+                  names: (options.repoTopics) ? options.repoTopics : []
+                }
+              })
             })
           }
         },
         checks: {
           create: () => {
-            return { data: {
-              id: 1
-            }}
+            return {
+              data: {
+                id: 1
+              }
+            }
           },
           update: () => {
             return {}
           }
         },
         teams: {
-          listMembersInOrg: options.listMembers ? () => ({ data: options.listMembers }) : () => ({ data: [] })
+          listMembersInOrg: options.listMembers ? () => ({ data: options.listMembers }) : () => ({ data: [] }),
+          getMembershipForUserInOrg: options.membership ? () => ({ data: { state: options.membership } }) : () => ({ data: { state: false } })
         },
         pulls: {
           listFiles: {
@@ -140,7 +180,8 @@ module.exports = {
               return { status: 204 }
             }
           },
-          merge: jest.fn(),
+          requestReviewers: jest.fn().mockReturnValue(options.requestReviewers || 'request review success'),
+          merge: jest.fn().mockReturnValue(options.merge || 'merged'),
           get: jest.fn()
         },
         paginate: jest.fn(async (fn, cb) => {
@@ -161,7 +202,7 @@ module.exports = {
           listLabelsOnIssue: () => {
             return { data: (options.labels) ? options.labels : [] }
           },
-          checkAssignee: () => {
+          checkUserCanBeAssigned: () => {
             return new Promise((resolve) => {
               resolve({ status: 204 })
             })
@@ -169,18 +210,24 @@ module.exports = {
           listComments: () => {
             return { data: (options.listComments) ? options.listComments : [] }
           },
-          addLabels: jest.fn(),
-          update: jest.fn(),
+          createComment: jest.fn().mockReturnValue(options.createComment || 'createComment call success'),
+          deleteComment: jest.fn().mockReturnValue(options.deleteComment || 'deleteComment call success'),
+          addAssignees: jest.fn().mockReturnValue(options.addAssignees || 'addAssignees call success'),
+          setLabels: jest.fn().mockReturnValue(options.setLabels || 'setLabels call success'),
+          addLabels: jest.fn().mockReturnValue(options.addLabels || 'addLabels call success'),
+          update: jest.fn().mockReturnValue(options.updateIssues || 'update Issues call success'),
           get: () => {
-            return {data: (options.deepValidation) ? options.deepValidation : {}}
+            return { data: (options.deepValidation) ? options.deepValidation : {} }
           }
+        },
+        search: {
+          issuesAndPullRequests: jest.fn().mockReturnValue({ data: { items: options.issuesAndPullRequests || [] } })
         }
       },
       probotContext: {
-        config: () => {
-          return Promise.resolve(options.configJson)
-        }
-      }
+        config: jest.fn().mockResolvedValue(options.configJson)
+      },
+      globalSettings: {}
     }
   },
 
@@ -198,9 +245,9 @@ module.exports = {
   },
 
   mockConfigWithContext: (context, configString, options) => {
-    context.github.repos.getContents = () => {
-      return Promise.resolve({ data: {
-        content: Buffer.from(configString).toString('base64') }
+    context.octokit.repos.getContent = () => {
+      return Promise.resolve({
+        data: { content: Buffer.from(configString).toString('base64') }
       })
     }
     context.probotContext.config = () => {

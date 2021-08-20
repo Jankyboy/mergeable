@@ -126,3 +126,77 @@ Detect issues and pull requests that are n days old (stale) and notify authors a
             payload:
               body: This is old. Is it still relevant?
 
+
+Greet a new contributor
+"""""""""""""""""""""""
+Add a comment on a pull request when it is created
+
+::
+
+    version: 2
+    mergeable:
+      - when: pull_request.opened
+        name: "Greet a contributor"
+        validate: []
+        pass:
+          - do: comment
+            payload:
+              body: >
+                Thanks for creating a pull request! A maintainer will review your changes shortly. Please don't be discouraged if it takes a while.
+
+
+Auto-merge pull requests once all checks pass
+"""""""""""""""""""""""""""""""""""""""""""""
+This recipe relies on the fact that the main branch has been protected and only allows merges
+when the required checks have passed or the required number of reviews/other conditions are met.
+This basically means that ``mergeable`` will merge the pull request as soon as it shows a green merged button
+on Github.
+
+Notice the blank validator which ensures that the merge event happens as soon as Github allows ``mergeable`` to merge the pull request.
+
+::
+
+    version: 2
+    mergeable:
+      - when: pull_request.*, pull_request_review.*, status.*, check_suite.*
+        name: "Automatically merge pull requests once it passes all checks"
+        validate: []
+        pass:
+          - do: merge
+            merge_method: "squash"
+
+Approval check + title check if certain files are changed
+"""""""""""""""""""""""
+Add 2 checks to the PR
+1. Approval check - Checks whether the PR has been approved by certain people
+2. Title should match a regex if certain files are changed. If no changes are made in those files, check should pass
+
+::
+
+    version: 2
+    mergeable:
+      - when: pull_request.*, pull_request_review.*
+        name: 'Approval check'
+        validate:
+          - do: approvals
+            min:
+              count: 1
+            limit:
+              users: [ 'approverA', 'approverB' ]
+
+      - when: pull_request.*, pull_request_review.*
+        name: 'PR title check'
+        validate:
+          - do: or
+            validate:
+              - do: changeset
+                must_exclude:
+                  regex: 'some/regex/for/those/certain/files/*'
+              - do: and
+                validate:
+                  - do: changeset
+                    must_include:
+                      regex: 'some/regex/for/those/certain/files/*'
+                  - do: title
+                    begins_with:
+                      match: [ 'some prefix' ]
