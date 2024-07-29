@@ -11,7 +11,7 @@ test('isMergeable is true if the PR body is not empty', async () => {
     }
   }
 
-  let descriptionValidation = await description.processValidate(createMockPR('This is a mock Description'), settings)
+  const descriptionValidation = await description.processValidate(createMockPR('This is a mock Description'), settings)
   expect(descriptionValidation.status).toBe('pass')
 })
 
@@ -26,6 +26,12 @@ test('isMergeable is false if the PR body is empty', async () => {
   }
 
   let descriptionValidation = await description.processValidate(createMockPR(''), settings)
+  expect(descriptionValidation.status).toBe('fail')
+
+  descriptionValidation = await description.processValidate(createMockPR(undefined), settings)
+  expect(descriptionValidation.status).toBe('fail')
+
+  descriptionValidation = await description.processValidate(createMockPR(null), settings)
   expect(descriptionValidation.status).toBe('fail')
 
   descriptionValidation = await description.processValidate(createMockPR('Some Description'), settings)

@@ -1,13 +1,14 @@
 const executor = require('../../../lib/flex/flex')
 const Helper = require('../../../__fixtures__/unit/helper')
 const { Action } = require('../../../lib/actions/action')
+const Comment = require('../../../lib/actions/comment')
 
 describe('Test processBeforeValidate and processAfterValidate invocations', () => {
   let context
-  let registry = { validators: new Map(), actions: new Map() }
+  const registry = { validators: new Map(), actions: new Map() }
   let action
 
-  let config = `
+  const config = `
     version: 2
     mergeable:
       - when: pull_request.*
@@ -20,7 +21,7 @@ describe('Test processBeforeValidate and processAfterValidate invocations', () =
             must_exclude:
               regex: wip|work in progress
   `
-  let configWithMultiple = config + `
+  const configWithMultiple = config + `
       - when: pull_request_review.submitted
         validate:
           - do: milestone
@@ -40,7 +41,7 @@ describe('Test processBeforeValidate and processAfterValidate invocations', () =
   })
 
   test('when event is in configuration', async () => {
-    context.event = 'pull_request'
+    context.eventName = 'pull_request'
     context.payload.action = 'opened'
     await executor(context, registry)
     expect(action.processBeforeValidate.mock.calls.length).toBe(1)
@@ -48,7 +49,7 @@ describe('Test processBeforeValidate and processAfterValidate invocations', () =
   })
 
   test('when event is not in configuration', async () => {
-    context.event = 'pull_request_review'
+    context.eventName = 'pull_request_review'
     context.payload.action = 'submitted'
     await executor(context, registry)
     expect(action.processBeforeValidate.mock.calls.length).toBe(0)
@@ -57,7 +58,7 @@ describe('Test processBeforeValidate and processAfterValidate invocations', () =
 
   test('when event is in configuration with multiple whens', async () => {
     Helper.mockConfigWithContext(context, configWithMultiple)
-    context.event = 'pull_request_review'
+    context.eventName = 'pull_request_review'
     context.payload.action = 'submitted'
     await executor(context, registry)
     expect(action.processBeforeValidate.mock.calls.length).toBe(1)
@@ -87,11 +88,64 @@ describe('Test processBeforeValidate and processAfterValidate invocations', () =
             must_exclude:
               regex: wip|work in progress`
     Helper.mockConfigWithContext(context, config)
-    context.event = 'pull_request'
+    context.eventName = 'pull_request'
     context.payload.action = 'opened'
     await executor(context, registry)
     expect(action.processBeforeValidate.mock.calls.length).toBe(2)
     expect(action.processAfterValidate.mock.calls.length).toBe(2)
+  })
+
+  test('Expect pass action to be triggered on empty validator', async () => {
+    const config = `
+    version: 2
+    mergeable:
+      - when: pull_request.opened
+        name: "Greet a contributor"
+        validate: []
+        pass:
+          - do: comment
+            payload:
+              body: >
+                Thanks for creating a pull request! A maintainer will review your changes shortly. Please don't be discouraged if it takes a while.`
+
+    const context = Helper.mockContext()
+    const registry = { validators: new Map(), actions: new Map() }
+    Helper.mockConfigWithContext(context, config)
+    const commentAction = new Comment()
+    commentAction.supportedEvents = ['pull_request.opened', 'pull_request.edited', 'pull_request_review.submitted']
+    registry.actions.set('comment', commentAction)
+
+    context.eventName = 'pull_request'
+    context.payload.action = 'opened'
+    context.octokit.issues.createComment = jest.fn()
+    await executor(context, registry)
+    expect(context.octokit.issues.createComment.mock.calls.length).toBe(1)
+  })
+
+  test('Expect fail action to not be triggered on empty validator ', async () => {
+    const config = `
+    version: 2
+    mergeable:
+      - when: pull_request.opened
+        name: "Greet a contributor"
+        validate: []
+        fail:
+          - do: comment
+            payload:
+              body: >
+                Thanks for creating a pull request! A maintainer will review your changes shortly. Please don't be discouraged if it takes a while.`
+    const context = Helper.mockContext()
+    const registry = { validators: new Map(), actions: new Map() }
+    Helper.mockConfigWithContext(context, config)
+    const commentAction = new Comment()
+    commentAction.supportedEvents = ['pull_request.opened', 'pull_request.edited', 'pull_request_review.submitted']
+    registry.actions.set('comment', commentAction)
+
+    context.eventName = 'pull_request'
+    context.payload.action = 'opened'
+    context.octokit.issues.createComment = jest.fn()
+    await executor(context, registry)
+    expect(context.octokit.issues.createComment.mock.calls.length).toBe(0)
   })
 
   test('processPreAction works correctly, two whens with same events but different actions', async () => {
@@ -107,7 +161,7 @@ describe('Test processBeforeValidate and processAfterValidate invocations', () =
           - do: label
             must_exclude:
               regex: wip|work in progress
-        fail: 
+        fail:
           - do: assign
             assignees: ['test user']
       - when: pull_request.*
@@ -125,7 +179,7 @@ describe('Test processBeforeValidate and processAfterValidate invocations', () =
               body: 'test comment'
           `
 
-    let registry = { validators: new Map(), actions: new Map() }
+    const registry = { validators: new Map(), actions: new Map() }
     const commentAction = new Action()
     commentAction.processBeforeValidate = jest.fn()
     commentAction.processAfterValidate = jest.fn()
@@ -139,7 +193,7 @@ describe('Test processBeforeValidate and processAfterValidate invocations', () =
     registry.actions.set('assign', assignAction)
 
     Helper.mockConfigWithContext(context, config)
-    context.event = 'pull_request'
+    context.eventName = 'pull_request'
     context.payload.action = 'opened'
     await executor(context, registry)
 
@@ -150,33 +204,33 @@ describe('Test processBeforeValidate and processAfterValidate invocations', () =
 
 describe('#executor', () => {
   test('Bad YML', async () => {
-    let context = Helper.mockContext()
-    context.event = 'pull_request'
+    const context = Helper.mockContext()
+    context.eventName = 'pull_request'
     context.payload.action = 'opened'
     Helper.mockConfigWithContext(context, `
       version: 2
         mergeable:
     when: pull_request.*
       `,
-    {files: ['.github/mergeable.yml']}
+    { files: ['.github/mergeable.yml'] }
     )
 
-    context.event = 'pull_request'
+    context.eventName = 'pull_request'
     context.payload.action = 'opened'
-    context.github.checks.create = jest.fn()
-    context.github.checks.update = jest.fn()
+    context.octokit.checks.create = jest.fn()
+    context.octokit.checks.update = jest.fn()
 
     await executor(context, { validators: new Map(), actions: new Map() })
-    expect(context.github.checks.update.mock.calls.length).toBe(0)
-    expect(context.github.checks.create.mock.calls.length).toBe(1)
+    expect(context.octokit.checks.update.mock.calls.length).toBe(0)
+    expect(context.octokit.checks.create.mock.calls.length).toBe(1)
 
-    const theCall = context.github.checks.create.mock.calls[0][0]
+    const theCall = context.octokit.checks.create.mock.calls[0][0]
     expect(theCall.status).toBe('completed')
     expect(theCall.conclusion).toBe('cancelled')
   })
 
   test('One When', async () => {
-    let context = Helper.mockContext('title')
+    const context = Helper.mockContext('title')
     Helper.mockConfigWithContext(context, `
       version: 2
       mergeable:
@@ -203,26 +257,26 @@ describe('#executor', () => {
                 summary: You are ready to merge
     `)
 
-    let registry = { validators: new Map(), actions: new Map() }
-    context.event = 'pull_request'
+    const registry = { validators: new Map(), actions: new Map() }
+    context.eventName = 'pull_request'
     context.payload.action = 'opened'
     await executor(context, registry)
     // test that the registry will register dynamicly.
     expect(registry.validators.get('title')).toBeDefined()
     expect(registry.validators.get('label')).toBeDefined()
 
-    let title = {
-      processValidate: jest.fn().mockReturnValue({status: 'pass'}),
+    const title = {
+      processValidate: jest.fn().mockReturnValue({ status: 'pass' }),
       isEventSupported: jest.fn().mockReturnValue(true)
     }
-    let label = {
-      processValidate: jest.fn().mockReturnValue({status: 'pass'}),
+    const label = {
+      processValidate: jest.fn().mockReturnValue({ status: 'pass' }),
       isEventSupported: jest.fn().mockReturnValue(true)
     }
     registry.validators.set('title', title)
     registry.validators.set('label', label)
 
-    let checks = {
+    const checks = {
       processBeforeValidate: jest.fn(),
       processAfterValidate: jest.fn(),
       isEventSupported: jest.fn().mockReturnValue(false)
@@ -238,7 +292,7 @@ describe('#executor', () => {
   })
 
   test('Comma seperated events', async () => {
-    let context = Helper.mockContext('title')
+    const context = Helper.mockContext('title')
     Helper.mockConfigWithContext(context, `
       version: 2
       mergeable:
@@ -262,26 +316,26 @@ describe('#executor', () => {
                 summary: You are ready to merge
     `)
 
-    let registry = { validators: new Map(), actions: new Map() }
-    let title = {
-      processValidate: jest.fn(value => Promise.resolve({status: 'pass'})),
+    const registry = { validators: new Map(), actions: new Map() }
+    const title = {
+      processValidate: jest.fn(value => Promise.resolve({ status: 'pass' })),
       isEventSupported: jest.fn().mockReturnValue(true)
     }
     registry.validators.set('title', title)
-    let issueOnly = {
-      processValidate: jest.fn(value => Promise.resolve({status: 'pass'})),
+    const issueOnly = {
+      processValidate: jest.fn(value => Promise.resolve({ status: 'pass' })),
       isEventSupported: jest.fn(event => { return (event === 'issues.opened') })
     }
     registry.validators.set('issueOnly', issueOnly)
 
-    let checks = {
+    const checks = {
       processBeforeValidate: jest.fn(),
       processAfterValidate: jest.fn(),
       isEventSupported: jest.fn(event => { return (event === 'pull_request.opened') })
     }
     registry.actions.set('checks', checks)
 
-    context.event = 'pull_request'
+    context.eventName = 'pull_request'
     context.payload.action = 'opened'
     await executor(context, registry)
     expect(title.processValidate).toHaveBeenCalledTimes(1)
@@ -291,7 +345,7 @@ describe('#executor', () => {
     expect(checks.processBeforeValidate).toHaveBeenCalledTimes(1)
     expect(checks.processAfterValidate).toHaveBeenCalledTimes(1)
 
-    context.event = 'issues'
+    context.eventName = 'issues'
     context.payload.action = 'opened'
     await executor(context, registry)
     expect(title.processValidate).toHaveBeenCalledTimes(2)
@@ -303,7 +357,7 @@ describe('#executor', () => {
   })
 
   test('Multiple Whens', async () => {
-    let context = Helper.mockContext('title')
+    const context = Helper.mockContext('title')
     Helper.mockConfigWithContext(context, `
       version: 2
       mergeable:
@@ -344,25 +398,25 @@ describe('#executor', () => {
                 summary: You are ready to merge
     `)
 
-    let registry = { validators: new Map(), actions: new Map() }
-    let title = {
-      processValidate: jest.fn(value => Promise.resolve({status: 'pass'})),
+    const registry = { validators: new Map(), actions: new Map() }
+    const title = {
+      processValidate: jest.fn(value => Promise.resolve({ status: 'pass' })),
       isEventSupported: jest.fn().mockReturnValue(true)
     }
     registry.validators.set('title', title)
-    let label = {
-      processValidate: jest.fn(value => Promise.resolve({status: 'pass'})),
+    const label = {
+      processValidate: jest.fn(value => Promise.resolve({ status: 'pass' })),
       isEventSupported: jest.fn().mockReturnValue(true)
     }
     registry.validators.set('label', label)
-    let checks = {
+    const checks = {
       processBeforeValidate: jest.fn(),
       processAfterValidate: jest.fn(),
       isEventSupported: jest.fn().mockReturnValue(true)
     }
     registry.actions.set('checks', checks)
 
-    context.event = 'pull_request'
+    context.eventName = 'pull_request'
     context.payload.action = 'opened'
     await executor(context, registry)
     expect(title.processValidate).toHaveBeenCalledTimes(1)
@@ -370,7 +424,7 @@ describe('#executor', () => {
     expect(checks.processBeforeValidate).toHaveBeenCalledTimes(1)
     expect(checks.processAfterValidate).toHaveBeenCalledTimes(1)
 
-    context.event = 'issues'
+    context.eventName = 'issues'
     await executor(context, registry)
     expect(title.processValidate).toHaveBeenCalledTimes(2)
     expect(label.processValidate).toHaveBeenCalledTimes(1)
@@ -379,7 +433,7 @@ describe('#executor', () => {
   })
 
   test('isEventInContext is working only for correct event', async () => {
-    let context = Helper.mockContext('title')
+    const context = Helper.mockContext('title')
     Helper.mockConfigWithContext(context, `
       version: 2
       mergeable:
@@ -420,25 +474,25 @@ describe('#executor', () => {
                 summary: You are ready to merge
     `)
 
-    let registry = { validators: new Map(), actions: new Map() }
-    let title = {
-      processValidate: jest.fn(value => Promise.resolve({status: 'pass'})),
+    const registry = { validators: new Map(), actions: new Map() }
+    const title = {
+      processValidate: jest.fn(value => Promise.resolve({ status: 'pass' })),
       isEventSupported: jest.fn().mockReturnValue(true)
     }
     registry.validators.set('title', title)
-    let label = {
-      processValidate: jest.fn(value => Promise.resolve({status: 'pass'})),
+    const label = {
+      processValidate: jest.fn(value => Promise.resolve({ status: 'pass' })),
       isEventSupported: jest.fn().mockReturnValue(true)
     }
     registry.validators.set('label', label)
-    let checks = {
+    const checks = {
       processBeforeValidate: jest.fn(),
       processAfterValidate: jest.fn(),
       isEventSupported: jest.fn().mockReturnValue(true)
     }
     registry.actions.set('checks', checks)
 
-    context.event = 'pull_request_review'
+    context.eventName = 'pull_request_review'
     context.payload.action = 'opened'
     await executor(context, registry)
     expect(title.processValidate).toHaveBeenCalledTimes(0)
@@ -446,7 +500,7 @@ describe('#executor', () => {
     expect(checks.processBeforeValidate).toHaveBeenCalledTimes(0)
     expect(checks.processAfterValidate).toHaveBeenCalledTimes(0)
 
-    context.event = 'pull_request'
+    context.eventName = 'pull_request'
     await executor(context, registry)
     expect(title.processValidate).toHaveBeenCalledTimes(1)
     expect(label.processValidate).toHaveBeenCalledTimes(0)
@@ -455,17 +509,17 @@ describe('#executor', () => {
   })
 
   test('Error handling', async () => {
-    let registry = { validators: new Map(), actions: new Map() }
-    let errorValidator = {
+    const registry = { validators: new Map(), actions: new Map() }
+    const errorValidator = {
       processValidate: jest.fn(value => Promise.reject(new Error('Uncaught error'))),
       isEventSupported: jest.fn().mockReturnValue(true)
     }
-    let passAction = {
+    const passAction = {
       processBeforeValidate: jest.fn(),
       processAfterValidate: jest.fn(),
       isEventSupported: jest.fn().mockReturnValue(true)
     }
-    let errorAction = {
+    const errorAction = {
       processBeforeValidate: jest.fn(),
       processAfterValidate: jest.fn(),
       isEventSupported: jest.fn().mockReturnValue(true)
@@ -474,7 +528,7 @@ describe('#executor', () => {
     registry.actions.set('pass_action', passAction)
     registry.actions.set('error_action', errorAction)
 
-    let context = Helper.mockContext('error')
+    const context = Helper.mockContext('error')
     Helper.mockConfigWithContext(context, `
       version: 2
       mergeable:
@@ -486,7 +540,7 @@ describe('#executor', () => {
           error:
             - do: error_action
     `)
-    context.event = 'pull_request'
+    context.eventName = 'pull_request'
     context.payload.action = 'opened'
     await executor(context, registry)
 
